@@ -1,0 +1,82 @@
+clear all;
+ts =0;
+tp =0;
+qua = 0;
+% load '/home/jiahongfu/Downloads/modelparameters.mat'
+
+% % x_true = im2double(imread('/data/works/equivariant_proximal_work/derain/norain-24.png'));
+% x_true = im2double(imread('/home/jiahongfu/sda5/RCDNet/rcd_result/results/norain-93_x2_HR.png'));
+% x_true = rgb2ycbcr(x_true);
+% x_true = x_true(:,:,1); 
+% x = im2double(imread('/data/works/equivariant_proximal_work/derain/SPANet/result_100l/93.png'));
+% x = rgb2ycbcr(x);
+% x = x(:,:,1);
+% fprintf('PSNR:%f, ssim:%f \n',psnr(x,x_true), ssim(x*255,x_true*255))
+
+psnr_array = [];
+ssim_array = [];
+
+for i=1:12                          % the number of testing samples
+   x_true=im2double(imread(strcat('D:\loss_constraint_equi\Data\Unfolding_Methods\node16_result\Derain\R12\R12_RCDNet_loss\results\',sprintf('norain-%d_x2_HR.png',i))));  % groundtruth 
+%    x_true=im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('%d_x2_HR.png',i))));
+   x_true = rgb2ycbcr(x_true);
+   x_true = x_true(:,:,1); 
+%    x = im2double(imread(strcat('/home/jiahongfu/4t/works/Equivariant_Proximal_Operator/Response/derain/IDT_test_result_R100L_64patch/',sprintf('norain-%d.png',i))));     %reconstructed image
+   x=im2double(imread(strcat('D:\loss_constraint_equi\Data\Unfolding_Methods\node16_result\Derain\R12\R12_RCDNet_loss\results\',sprintf('norain-%d_x2_SR.png',i))));
+   %    x = im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('%d_x2_SR.png',i))));
+   x = rgb2ycbcr(x);
+   x = x(:,:,1);
+   tp= tp+ psnr(x,x_true);
+   ts= ts+ssim(x*255,x_true*255);
+   psnr_array = [psnr_array, psnr(x, x_true)];
+   ssim_array = [ssim_array, ssim(x*255,x_true*255)];
+   if i==93
+       fprintf('num:%f\n',i)
+       fprintf('PSNR:%f, ssim:%f \n',psnr(x,x_true), ssim(x*255,x_true*255))
+   end
+end
+% save("/home/jiahongfu/4t/works/Equivariant_Proximal_Operator/Response/derain/RCD_r1400.mat", "psnr_array", "ssim_array")
+fprintf('psnr=%6.4f, ssim=%6.4f\n',tp/12,ts/1)
+% ts =0;
+% tp =0;
+% for i=11:20                          % the number of testing samples
+%    x_true=im2double(imread(strcat('D:/loss_constraint_equi/Data/Unfolding_Methods/node16_result/Derain/RCDNet_syn_equi/results/',sprintf('norain%d_x2_HR.png',i))));  % groundtruth 
+% %    x_true=im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('%d_x2_HR.png',i))));
+%    x_true = rgb2ycbcr(x_true);
+%    x_true = x_true(:,:,1); 
+%    x = im2double(imread(strcat('D:/loss_constraint_equi/Data/Unfolding_Methods/node16_result/Derain/RCDNet_syn_equi/results/',sprintf('norain%d_x2_LR.png',i))));     %reconstructed image
+%    %    x = im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('%d_x2_SR.png',i))));
+%    x = rgb2ycbcr(x);
+%    x = x(:,:,1);
+%    tp= tp+ psnr(x,x_true);
+%    ts= ts+ssim(x*255,x_true*255);
+% %    if i==43
+% %        fprintf('num:%f\n',i)
+% %        fprintf('PSNR:%f, ssim:%f \n',psnr(x,x_true), ssim(x*255,x_true*255))
+% %    end
+% end
+% fprintf('psnr=%6.4f, ssim=%6.4f\n',tp/10,ts/10)
+
+
+% for spa
+% for i=0:999                          % the number of testing samples
+% %    x_true=im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('norain-%d_x2_HR.png',i))));  % groundtruth 
+%    if i<10
+%        x_true=im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('00%d_x2_HR.png',i))));
+%        x = im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('00%d_x2_SR.png',i))));
+%    elseif i>=10 && i<100
+%        x_true=im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('0%d_x2_HR.png',i))));
+%        x = im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('0%d_x2_SR.png',i))));
+%    else
+%        x_true=im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('%d_x2_HR.png',i))));
+%        x = im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('%d_x2_SR.png',i))));
+%    end
+%    x_true = rgb2ycbcr(x_true);
+%    x_true = x_true(:,:,1); 
+% %    x = im2double(imread(strcat('/home/jiahongfu/sda5/RCDNet/rcd_result/results/',sprintf('norain-%d_x2_SR.png',i))));     %reconstructed image
+%    x = rgb2ycbcr(x);
+%    x = x(:,:,1);
+%    tp= tp+ psnr(x,x_true);
+%    ts= ts+ssim(x*255,x_true*255);
+% end
+% fprintf('psnr=%6.4f, ssim=%6.4f\n',tp/1000,ts/1000)

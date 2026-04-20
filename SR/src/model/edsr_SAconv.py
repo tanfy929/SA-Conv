@@ -1,0 +1,93 @@
+from model import common
+import torch
+import torch.nn as nn
+from model import hyper_newF_PCA_mask2 as fn
+from model import loftr
+
+def make_model(args, parent=False):
+    return EDSR_plus(args)
+
+class EDSR_plus(nn.Module):
+    def __init__(self, args):
+        super(EDSR_plus, self).__init__()
+
+        n_resblocks = args.n_resblocks
+        n_feats = args.n_feats
+        kernel_size = int(args.kernel_size)
+        iniScale = args.ini_scale
+        scale = args.scale[0]
+        act = fn.F_relu(True)
+        inP = kernel_size
+        tranNum = args.tranNum
+
+        self.HyperNet = loftr.HyperNet(args)
+
+        # checkpoint = torch.load('./model/model_epoch_360.pth')
+        # pretrained_dict = checkpoint['model_state_dict']
+        # self.HyperNet.load_state_dict(pretrained_dict)
+
+        self.sub_mean = common.MeanShift(args.rgb_range)
+        self.add_mean = common.MeanShift(args.rgb_range, sign=1)
+        Smooth = False
+        m_head =  [fn.Fconv_PCA(kernel_size,args.n_colors,n_feats,tranNum,inP=inP,padding=(kernel_size-1)//2, ifIni=1, Smooth = Smooth, iniScale = iniScale)]
+        
+        # define body module
+        m_body = [
+            fn.ResBlock(
+                fn.Fconv_PCA, n_feats, kernel_size,tranNum = tranNum, inP = inP,  act=act, res_scale=args.res_scale, Smooth = Smooth, iniScale = iniScale
+            ) for _ in range(n_resblocks)
+        ]
+#        m_body.append(fn.GroupFusion(n_feats, tranNum))
+        # 要加一个整合不�?tranNum 的层
+        # define tail module
+        conv = common.default_conv
+        n_feats = n_feats*tranNum
+        m_tail = [
+#            fn.GroupFusion(n_feats, tranNum),    
+            common.Upsampler(conv, scale, n_feats, act=False),
+            conv(n_feats, args.n_colors, 3)
+        ]
+
+        # self.head = nn.Sequential(*m_head)
+        self.head_conv = m_head[0]
+        # self.body = nn.Sequential(*m_body)
+        self.body_modules = nn.ModuleList(m_body)
+        self.tail = nn.Sequential(*m_tail)
+
+    def forward(self, x):
+        theta0, Cx, Cy = self.HyperNet(x)
+
+        x = self.sub_mean(x)
+        # x = self.head(x, Cx, Cy, theta0)
+        # res = self.body(x, Cx, Cy, theta0)
+        # res += x
+        x = self.head_conv(x, Cx, Cy, theta0)
+        res = x
+        for module in self.body_modules:
+            res = module(res, Cx, Cy, theta0)
+        res += x
+
+        x = self.tail(res)
+        x = self.add_mean(x)
+
+        return x 
+
+    def load_state_dict(self, state_dict, strict=True):
+        own_state = self.state_dict()
+        for name, param in state_dict.items():
+            if name in own_state:
+                if isinstance(param, nn.Parameter):
+                    param = param.data
+                try:
+                    own_state[name].copy_(param)
+                except Exception:
+                    if name.find('tail') == -1:
+                        raise RuntimeError('While copying the parameter named {}, '
+                                           'whose dimensions in the model are {} and '
+                                           'whose dimensions in the checkpoint are {}.'
+                                           .format(name, own_state[name].size(), param.size()))
+            elif strict:
+                if name.find('tail') == -1:
+                    raise KeyError('unexpected key "{}" in state_dict'
+                                   .format(name))
+
