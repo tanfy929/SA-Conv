@@ -14,7 +14,7 @@ import torch.distributions.laplace
 import scipy.io as io
 import numpy as np
 from model import hyper_newF_PCA_mask2 as fcnn
-from model import loftr
+from model import HyperNet_tiny
 
 def make_model(args, parent=False):
     return Mainnet(args)
@@ -267,14 +267,22 @@ class Xnet(nn.Module):
         self.body = nn.ModuleList(m_body)
         # self.out = nn.Sequential(fcnn.Fconv_PCA_out(kernel_size, n_feats, self.channels, tranNum, inP=kernel_size, padding=(kernel_size-1)//2, ifIni=0, Smooth=Smooth, iniScale=1.0))
         self.out = nn.ModuleList([fcnn.Fconv_PCA_out(kernel_size, n_feats, self.channels, tranNum, inP=kernel_size, padding=(kernel_size-1)//2, ifIni=0, Smooth=Smooth, iniScale=1.0)])
-        self.HyperNet = loftr.HyperNet(args)
+        self.HyperNet = HyperNet_tiny.HyperNetwork()
     def forward(self, input):
         # x_f = self.headx(input)
         # res = self.body(x_f)
         # # res = x_f + 0.1*res
         # x = self.out(res)
         # print('input', input.shape) # ([16, 35, 64, 64])
-        theta0, Cx, Cy = self.HyperNet(input[:,0:3,:,:])
+        
+        w = self.HyperNet(input)
+        # ================= 新增：暂存当前 batch 的 w =================
+        # 使用 detach() 脱离计算图，避免由于记录 log 导致显存溢出
+        self.debug_w = w.detach().cpu() 
+        # =========================================================
+        theta0 = w[:,0]
+        Cx = w[:,1]
+        Cy = w[:,2]
 
         x_f = input
         for layer in self.headx:

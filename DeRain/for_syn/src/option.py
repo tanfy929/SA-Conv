@@ -146,6 +146,10 @@ parser.add_argument('--nhead', dest='nhead', type=int, default=8, help='number o
 parser.add_argument('--num_layers', dest='num_layers', type=int, default=4, help='number of transformer encoder layers')
 parser.add_argument('--kv_size', dest='kv_size', type=int, default=128, help='token size of learnable key/value sequence')
 
+# TL版本预训练权重
+parser.add_argument('--dir_TL', type=str, default='./TL-checkpoint',
+                    help='pre-trained checkpoint')
+
 args = parser.parse_args()
 template.set_template(args)
 

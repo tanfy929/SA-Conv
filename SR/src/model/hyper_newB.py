@@ -360,7 +360,7 @@ class GetBasis(nn.Module):
         super(GetBasis,self).__init__()
         self.sizeP = sizeP
         self.tranNum = tranNum
-        inX, inY = MaskC_ini(sizeP, tranNum)
+        inX, inY, Mask = MaskC(sizeP, tranNum)
         if inP==None:
             inP = sizeP
         self.Rank = inP * inP
@@ -368,14 +368,11 @@ class GetBasis(nn.Module):
         # self.register_buffer()会将张量与模型状态一起保存并在模型移动到GPU时，这些缓冲区会自动移动到相同的设备
         self.register_buffer("inX", inX.reshape(1, sizeP,sizeP,1,1,1))  
         self.register_buffer("inY", inY.reshape(1, sizeP,sizeP,1,1,1)) 
-        # self.Cx = nn.Parameter(torch.ones(1))
-        # self.Cy = nn.Parameter(torch.ones(1))
-        # self.theta0 = nn.Parameter(torch.zeros(1))
-        # v = torch.pi/inP*(inP-1)
-        # self.p = inP/2
-        # self.device = 'cuda:4' if torch.cuda.is_available() else 'cpu'
-        # self.k = torch.arange(-(inP//2),inP//2+1, device=self.device).reshape(1,1,1,inP,1)
-        # self.l = torch.arange(-(inP//2),inP//2+1, device=self.device).reshape(1,1,1,1,inP)
+        self.register_buffer("Mask", Mask.reshape(1, sizeP,sizeP,1,1)) 
+        self.Cx = nn.Parameter(torch.ones(1))
+        self.Cy = nn.Parameter(torch.ones(1))
+        self.theta0 = nn.Parameter(torch.zeros(1))
+        
         k = torch.arange(-(inP // 2), inP // 2 + 1)
         l = torch.arange(-(inP // 2), inP // 2 + 1)
         self.register_buffer("k", k.reshape(1, 1, 1, 1, inP, 1))
@@ -383,24 +380,16 @@ class GetBasis(nn.Module):
         theta = torch.arange(tranNum)/tranNum*2*torch.pi
         # self.theta = theta.reshape(1,1,tranNum,1,1).to(self.device)
         self.register_buffer("theta", theta.reshape(1, 1, 1, tranNum, 1, 1))
-
-        ini_Cx = torch.ones(1)
-        ini_Cy = torch.ones(1)
-        ini_theta0 = torch.zeros(1)
-        self.register_buffer("ini_Cx", ini_Cx)
-        self.register_buffer("ini_Cy", ini_Cy)
-        self.register_buffer("ini_theta0",ini_theta0)
-    def forward(self, Cx_, Cy_, theta0_):
-        B = Cx_.size(0)
-
-        Cx = self.ini_Cx + 0.1 * Cx_
-        Cy = self.ini_Cy + 0.1 * Cy_
-        theta0 = self.ini_theta0 + 0.1 * theta0_
-
-        Cx = Cx.view(B, 1, 1, 1, 1, 1)
-        Cy = Cy.view(B, 1, 1, 1, 1, 1)
-        theta0 = theta0.view(B, 1, 1, 1, 1, 1)
         
+        self.scale = 1
+        
+    def forward(self, Cx, Cy, theta0):
+        B = Cx.size(0)
+
+        Cx = self.scale * Cx.view(B, 1, 1, 1, 1, 1) + self.Cx
+        Cy = self.scale * Cy.view(B, 1, 1, 1, 1, 1) + self.Cy
+        theta0 = self.scale * theta0.view(B, 1, 1, 1, 1, 1) + self.theta0
+
         X = torch.cos(theta0)*self.inX-torch.sin(theta0)*self.inY
         Y = torch.cos(theta0)*self.inY+torch.sin(theta0)*self.inX
         
@@ -419,36 +408,25 @@ class GetBasis(nn.Module):
         Basis = BicubicIni(X-self.k)*BicubicIni(Y-self.l)
         # print('##########Basis##########', Basis.shape) # ([7, 7, 4, 7, 7])
         # print('########## Basis ##########', Basis.reshape(Basis.size(0),Basis.size(1),Basis.size(2),Basis.size(3)*Basis.size(4)).shape) # ([7, 7, 4, 49])
-        Mask_ = MaskC(self.sizeP, self.tranNum, theta0, Cx, Cy)
-        Mask = Mask_.view(B, self.sizeP,self.sizeP,1,1) 
         
-        Basis = Basis.reshape(B, Basis.size(1),Basis.size(2),Basis.size(3),-1)*Mask
+        Basis = Basis.reshape(B, Basis.size(1),Basis.size(2),Basis.size(3),-1)*self.Mask
         # print('*********mask*********', self.Mask.shape) # ([7, 7, 1, 1])
         # print('*********Basis*********', Basis.shape) # ([7, 7, 4, 49])
         return Basis
 
-def MaskC(SizeP, tranNum, theta0, Cx, Cy):
-        device = theta0.device 
-
+def MaskC(SizeP, tranNum):
         p = (SizeP-1)/2
-
-        x = torch.arange(-p, p + 1, dtype=torch.float32, device=device) / p
-        X, Y = torch.meshgrid(x, x, indexing='ij')
-      
-        X = torch.cos(theta0)*X-torch.sin(theta0)*Y
-        Y = torch.cos(theta0)*Y+torch.sin(theta0)*X
-        X1 = X*(Cx)
-        Y1 = Y*(Cy)
-
-        C = X1**2+Y1**2
+        x = np.arange(-p,p+1)/p
+        X,Y  = np.meshgrid(x,x)
+        C    =X**2+Y**2
         if tranNum ==4 or tranNum==2 or tranNum==1:
-            Mask = torch.ones([SizeP, SizeP], device=device)
+            Mask = np.ones([SizeP, SizeP])
         else:
             if SizeP>4:
-                Mask = torch.exp(-torch.maximum(C-1,torch.zeros_like(C))/0.2)
+                Mask = np.exp(-np.maximum(C-1,0)/0.2)
             else:
-                Mask = torch.exp(-torch.maximum(C-1,torch.zeros_like(C))/2)
-        return Mask
+                Mask = np.exp(-np.maximum(C-1,0)/2)
+        return torch.FloatTensor(X), torch.FloatTensor(Y), torch.FloatTensor(Mask)
 
 def BicubicIni(x):
     absx = torch.abs(x)
@@ -458,14 +436,6 @@ def BicubicIni(x):
     Ind2 = (absx>1)*(absx<=2)
     temp = Ind1*(1.5*absx3-2.5*absx2+1)+Ind2*(-0.5*absx3+2.5*absx2-4*absx+2)
     return temp
-
-def MaskC_ini(SizeP, tranNum):
-        p = (SizeP-1)/2
-        x = np.arange(-p,p+1)/p
-        X,Y  = np.meshgrid(x,x)
-        return torch.FloatTensor(X), torch.FloatTensor(Y)
-
-
 
 class PointwiseAvgPoolAntialiased(nn.Module):
     

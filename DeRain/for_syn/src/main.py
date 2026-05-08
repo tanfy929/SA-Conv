@@ -36,6 +36,12 @@ if __name__ == '__main__':
                 print(">> Warning: HyperNet module not found in the model definition!")
 
         print_network(model)
+        
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"===> Total params:     {total_params / 1e6:.2f} M")  
+        print(f"===> Trainable params: {trainable_params / 1e6:.2f} M")
+        
         loss = loss.Loss(args, checkpoint) if not args.test_only else None
         t = Trainer(args, loader, model, loss, checkpoint)
         while not t.terminate():

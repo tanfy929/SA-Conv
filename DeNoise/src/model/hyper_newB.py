@@ -12,10 +12,10 @@ import torch.nn.functional as  F
 # import scipy.io as sio    
 import math
 from PIL import Image
-
+# torch.autograd.set_detect_anomaly(True)
 class Fconv_PCA(nn.Module):
 
-    def __init__(self,  sizeP, inNum, outNum, tranNum=8, inP = None, padding=None, ifIni=0, bias=True, Smooth = True, iniScale = 1.0, stride = 1):
+    def __init__(self,  sizeP, inNum, outNum, tranNum=4, inP = None, padding=None, ifIni=0, bias=True, Smooth = True, iniScale = 1.0, stride = 1):
        
         super(Fconv_PCA, self).__init__()
         if inP==None:
@@ -35,11 +35,7 @@ class Fconv_PCA(nn.Module):
         # iniw = Getini_reg(Basis.size(3), inNum, outNum, self.expand, weight)*iniScale
         self.expand = expand
         self.weights = nn.Parameter(torch.Tensor(outNum, inNum, expand, inP*inP), requires_grad=True)
-        # iniw = Getini_reg(inP*inP, inNum, outNum, self.expand)*iniScale
-        # self.weights = nn.Parameter(iniw, requires_grad=True)
-
-        # self.weights = nn.Parameter(torch.Tensor(outNum, inNum, expand, inP*inP), requires_grad=True)
-        # # nn.init.kaiming_uniform_(self.weights, a=0,mode='fan_in', nonlinearity='leaky_relu')
+        # nn.init.kaiming_uniform_(self.weights, a=0,mode='fan_in', nonlinearity='leaky_relu')
         if padding == None:
             self.padding = 0
         else:
@@ -51,13 +47,15 @@ class Fconv_PCA(nn.Module):
         self.reset_parameters()
     def forward(self, input, Cx, Cy, theta0):
         B,C,H,W = input.size()
-        
+
         tranNum = self.tranNum
         outNum = self.outNum
         inNum = self.inNum
         expand = self.expand
         Basis = self.GetBasis(Cx, Cy, theta0)
+        # print('Basis', Basis.size())
         tempW = torch.einsum('bijok,mnak->bmonaij', Basis, self.weights)
+        # tempW = torch.einsum('ijok,mnak->monaij', [self.Basis, self.weights])   # for torch<1.0
         
         Num = tranNum//expand
         tempWList = [torch.cat([tempW[:, :,i*Num:(i+1)*Num,:,-i:,:,:],tempW[:, :,i*Num:(i+1)*Num,:,:-i,:,:]], dim = 4) for i in range(expand)]   
@@ -76,10 +74,11 @@ class Fconv_PCA(nn.Module):
                         dilation=1,
                         groups=B)
         output = output.reshape(B,-1,H,W)
+        
         if self.ifbias:
             output = output+_bias
-        return output   
-    
+        return output 
+
     def reset_parameters(self) -> None:
         nn.init.kaiming_uniform_(self.weights, a=math.sqrt(5))
         if self.c is not None:
@@ -167,7 +166,7 @@ class Fconv_PCA_out(nn.Module):
     
 # class FconvTranspose_PCA(nn.Module):
 
-#     def __init__(self,  sizeP, inNum, outNum, tranNum=8, inP = None, padding=None, ifIni=0, bias=True, Smooth = True, iniScale = 1.0, stride = 1):
+#     def __init__(self,  sizeP, inNum, outNum, tranNum=4, inP = None, padding=None, ifIni=0, bias=True, Smooth = True, iniScale = 1.0, stride = 1):
        
 #         super(FconvTranspose_PCA, self).__init__()
 #         if inP==None:
@@ -177,7 +176,7 @@ class Fconv_PCA_out(nn.Module):
 #         self.inNum = inNum
 #         self.sizeP = sizeP
 #         self.stride = stride
-#         self.GetBasis = GetBasis(sizeP,  tranNum, inP)  
+#         self.GetBasis = GetBasis(sizeP, tranNum, inP)  
 #         # Basis, Rank, weight = GetBasis_PCA(sizeP,tranNum,inP,Smooth = Smooth)        
 #         # self.register_buffer("Basis", Basis)#.cuda())        
 #         self.ifbias = bias
@@ -269,7 +268,7 @@ class Fconv_PCA_out(nn.Module):
 
 class Fconv_1X1(nn.Module):
     
-    def __init__(self, inNum, outNum, tranNum=8, ifIni=0, bias=True, Smooth = True, iniScale = 1.0, stride=1):
+    def __init__(self, inNum, outNum, tranNum=4, ifIni=0, bias=True, Smooth = True, iniScale = 1.0, stride=1):
        
         super(Fconv_1X1, self).__init__()
 
@@ -314,14 +313,14 @@ class Fconv_1X1(nn.Module):
                         dilation=1,
                         groups=1)
         return output+bias  
-
+    
 class F_relu(nn.Module):
     def __init__(self, inplace=True):
         super(F_relu, self).__init__()
         self.relu = nn.ReLU(inplace=inplace)
     def forward(self, X, Cx=None, Cy=None, theta0=None):
         X = self.relu(X)
-        return X 
+        return X  
 
 class ResBlock(nn.Module):
     def __init__(
@@ -357,155 +356,65 @@ def Getini_reg(nNum, inNum, outNum,expand, weight = 1):
 
 
 class GetBasis(nn.Module):
-    def __init__(self, sizeP, tranNum=8, inP=None):
+    def __init__(self, sizeP, tranNum=4, inP=None):
         super(GetBasis,self).__init__()
         self.sizeP = sizeP
         self.tranNum = tranNum
-        inX, inY = MaskC_ini(sizeP, tranNum)
-        inX = torch.FloatTensor(inX)
-        inY = torch.FloatTensor(inY)
+        inX, inY, Mask = MaskC(sizeP, tranNum)
         if inP==None:
             inP = sizeP
         self.Rank = inP * inP
         self.inp = inP//2
-
+        # self.register_buffer()会将张量与模型状态一起保存并在模型移动到GPU时，这些缓冲区会自动移动到相同的设备
         self.register_buffer("inX", inX.reshape(1, sizeP,sizeP,1,1,1))  
         self.register_buffer("inY", inY.reshape(1, sizeP,sizeP,1,1,1)) 
-       
-        v = torch.pi/inP*(inP-1)
-        U = Matrix_PCA(sizeP, tranNum, inP=None, Smooth = True)
-        self.register_buffer("U", U) 
-
-        k = torch.arange(-(inP//2),inP//2+1).reshape(1, 1, 1, 1, inP, 1)*v
-        l = torch.arange(-(inP//2),inP//2+1).reshape(1, 1, 1, 1, 1, inP)*v
-        self.register_buffer("k", k)
-        self.register_buffer("l", l)
+        self.register_buffer("Mask", Mask.reshape(1, sizeP,sizeP,1,1)) 
+        self.Cx = nn.Parameter(torch.ones(1))
+        self.Cy = nn.Parameter(torch.ones(1))
+        self.theta0 = nn.Parameter(torch.zeros(1))
         
+        k = torch.arange(-(inP // 2), inP // 2 + 1)
+        l = torch.arange(-(inP // 2), inP // 2 + 1)
+        self.register_buffer("k", k.reshape(1, 1, 1, 1, inP, 1))
+        self.register_buffer("l", l.reshape(1, 1, 1, 1, 1, inP))
         theta = torch.arange(tranNum)/tranNum*2*torch.pi
+        # self.theta = theta.reshape(1,1,tranNum,1,1).to(self.device)
         self.register_buffer("theta", theta.reshape(1, 1, 1, tranNum, 1, 1))
-
+        
+        self.scale = 1
+        
     def forward(self, Cx, Cy, theta0):
         B = Cx.size(0)
 
-        Cx = Cx.view(B, 1, 1, 1, 1, 1)
-        Cy = Cy.view(B, 1, 1, 1, 1, 1)
-        theta0 = theta0.view(B, 1, 1, 1, 1, 1)
+        Cx = self.scale * Cx.view(B, 1, 1, 1, 1, 1) + self.Cx
+        Cy = self.scale * Cy.view(B, 1, 1, 1, 1, 1) + self.Cy
+        theta0 = self.scale * theta0.view(B, 1, 1, 1, 1, 1) + self.theta0
 
         X = torch.cos(theta0)*self.inX-torch.sin(theta0)*self.inY
         Y = torch.cos(theta0)*self.inY+torch.sin(theta0)*self.inX
-
+        
         X1 = X * Cx
         Y1 = Y * Cy
-
+        # print('Cx', self.Cx)
+        # X2 = torch.cos(self.theta0)*X1+torch.sin(self.theta0)*Y1  # cuda
+        # Y2 = torch.cos(self.theta0)*Y1-torch.sin(self.theta0)*X1
+        
         X = torch.cos(self.theta)*X1-torch.sin(self.theta)*Y1
         Y = torch.cos(self.theta)*Y1+torch.sin(self.theta)*X1
 
-        BasisC = torch.cos(self.k*X+self.l*Y)
-        BasisS = torch.sin(self.k*X+self.l*Y)
-        # p = self.inP / 2
-        # BasisC = torch.cos((self.k-self.inP*(self.k>p))*self.v*X+(self.l-self.inP*(self.l>p))*self.v*Y)
-        # BasisS = torch.sin((self.k-self.inP*(self.k>p))*self.v*X+(self.l-self.inP*(self.l>p))*self.v*Y)
+        X = X * self.inp
+        Y = Y * self.inp
 
-        Mask_ = MaskC(self.sizeP, self.tranNum, theta0, Cx, Cy)
-        Mask = Mask_.detach().view(B, self.sizeP,self.sizeP,1,1,1) 
+        Basis = BicubicIni(X-self.k)*BicubicIni(Y-self.l)
+        # print('##########Basis##########', Basis.shape) # ([7, 7, 4, 7, 7])
+        # print('########## Basis ##########', Basis.reshape(Basis.size(0),Basis.size(1),Basis.size(2),Basis.size(3)*Basis.size(4)).shape) # ([7, 7, 4, 49])
+        
+        Basis = Basis.reshape(B, Basis.size(1),Basis.size(2),Basis.size(3),-1)*self.Mask
+        # print('*********mask*********', self.Mask.shape) # ([7, 7, 1, 1])
+        # print('*********Basis*********', Basis.shape) # ([7, 7, 4, 49])
+        return Basis
 
-        BasisC = BasisC * Mask  
-        BasisS = BasisS * Mask
-
-        BasisC = BasisC.reshape(B, BasisC.size(1),BasisC.size(2),BasisC.size(3),-1)
-        BasisS = BasisS.reshape(B, BasisS.size(1),BasisS.size(2),BasisS.size(3),-1)
-
-        BasisR = torch.cat((BasisC,BasisS),dim = 4)
-     
-        # BasisR = torch.einsum('rabcd,de->rabce', BasisR, self.U)
-        BasisR = torch.matmul(BasisR, self.U)
-        return BasisR
-
-
-def Matrix_PCA(sizeP, tranNum=8, inP=None, Smooth = True):
-    if inP==None:
-        inP = sizeP
-    inX, inY, Mask = MaskC_ori(sizeP, tranNum)
-    X0 = np.expand_dims(inX,2)
-    Y0 = np.expand_dims(inY,2)
-    Mask = np.expand_dims(Mask,2)
-    theta = np.arange(tranNum)/tranNum*2*np.pi
-    theta = np.expand_dims(np.expand_dims(theta,axis=0),axis=0)
-
-    X = np.cos(theta)*X0-np.sin(theta)*Y0
-    Y = np.cos(theta)*Y0+np.sin(theta)*X0
-
-    X = np.expand_dims(np.expand_dims(X,3),4)
-    Y = np.expand_dims(np.expand_dims(Y,3),4)
-    v = np.pi/inP*(inP-1)
-    p = inP/2
-    
-    k = np.reshape(np.arange(-(inP//2),inP//2+1), [1,1,1,inP,1])*v
-    l = np.reshape(np.arange(-(inP//2),inP//2+1), [1,1,1,1,inP])*v
-    
-    BasisC = np.cos(k*X+l*Y)
-    BasisS = np.sin(k*X+l*Y)
-
-    BasisC = np.reshape(BasisC,[sizeP, sizeP, tranNum, inP*inP])*np.expand_dims(Mask,3)
-    BasisS = np.reshape(BasisS,[sizeP, sizeP, tranNum, inP*inP])*np.expand_dims(Mask,3)
-
-    BasisC = np.reshape(BasisC,[sizeP*sizeP*tranNum, inP*inP])
-    BasisS = np.reshape(BasisS,[sizeP*sizeP*tranNum, inP*inP])
-
-    BasisR = np.concatenate((BasisC, BasisS), axis = 1)
-    # print('------BasisR',BasisR.shape) # (100, 50)
-    U,S,VT = np.linalg.svd(np.matmul(BasisR.T,BasisR))
-
-    Rank   = np.sum(S>0.0001)
-    BasisR = np.matmul(np.matmul(BasisR,U[:,:Rank]),np.diag(1/np.sqrt(S[:Rank]+0.0000000001))) 
-    BasisR = np.reshape(BasisR,[sizeP, sizeP, tranNum, Rank])
-    # print('*******BasisR',BasisR.shape) #  (5, 5, 4, 25)
-    temp = np.reshape(BasisR, [sizeP*sizeP, tranNum, Rank])
-    var = (np.std(np.sum(temp, axis = 0)**2, axis=0)+np.std(np.sum(temp**2*sizeP*sizeP, axis = 0),axis = 0))/np.mean(np.sum(temp, axis = 0)**2+np.sum(temp**2*sizeP*sizeP, axis = 0),axis = 0)
-    # Trod = 1
-    # Ind = var<Trod
-    # Rank = np.sum(Ind)
-    # Weight = 1/np.maximum(var, 0.04)/25
-    # if Smooth:
-    #     BasisR = np.expand_dims(np.expand_dims(np.expand_dims(Weight,0),0),0)*BasisR
-    S = 1/np.sqrt(S[:Rank]+0.0000000001)
-    # print('U', U.shape) #(18,18)
-    # print('S', S.shape) # (9,9)
-    U = U[:,:Rank]*np.expand_dims(S,0)
-    return torch.FloatTensor(U)
-
-def MaskC_ini(SizeP, tranNum):
-        p = (SizeP-1)/2
-        x = np.arange(-p,p+1)/p
-        X,Y  = np.meshgrid(x,x)
-        return X, Y
-
-def MaskC(SizeP, tranNum, theta0, Cx, Cy):
-        device = theta0.device 
-        p = (SizeP-1)/2
-
-        x = torch.arange(-p, p + 1, dtype=torch.float32, device=device) / p
-        X, Y = torch.meshgrid(x, x, indexing='ij')
-
-        X = X.reshape(1, SizeP, SizeP, 1, 1, 1)
-        Y = Y.reshape(1, SizeP, SizeP, 1, 1, 1)
-
-        X = torch.cos(theta0)*X-torch.sin(theta0)*Y
-        Y = torch.cos(theta0)*Y+torch.sin(theta0)*X
-        X1 = X*(Cx)
-        Y1 = Y*(Cy)
-
-        C = X1**2+Y1**2
-        if tranNum ==4 or tranNum==2 or tranNum==1:
-            Mask = torch.ones([SizeP, SizeP])
-        else:
-            if SizeP>4:
-                Mask = torch.exp(-torch.maximum(C-1,torch.zeros_like(C))/0.2)
-            else:
-                Mask = torch.exp(-torch.maximum(C-1,torch.zeros_like(C))/2)
-        return Mask
-
-def MaskC_ori(SizeP, tranNum):
+def MaskC(SizeP, tranNum):
         p = (SizeP-1)/2
         x = np.arange(-p,p+1)/p
         X,Y  = np.meshgrid(x,x)
@@ -517,7 +426,16 @@ def MaskC_ori(SizeP, tranNum):
                 Mask = np.exp(-np.maximum(C-1,0)/0.2)
             else:
                 Mask = np.exp(-np.maximum(C-1,0)/2)
-        return X, Y, Mask
+        return torch.FloatTensor(X), torch.FloatTensor(Y), torch.FloatTensor(Mask)
+
+def BicubicIni(x):
+    absx = torch.abs(x)
+    absx2 = absx**2
+    absx3 = absx**3
+    Ind1 = (absx<=1)
+    Ind2 = (absx>1)*(absx<=2)
+    temp = Ind1*(1.5*absx3-2.5*absx2+1)+Ind2*(-0.5*absx3+2.5*absx2-4*absx+2)
+    return temp
 
 class PointwiseAvgPoolAntialiased(nn.Module):
     
@@ -568,7 +486,7 @@ class F_BN(nn.Module):
         return X.reshape([X.size(0), self.tranNum*X.size(1),int(X.size(2)/self.tranNum), X.size(3)])
 
 class F_IN(nn.Module):
-    def __init__(self,channels, tranNum=8, affine=False, track_running_stats: bool = False):
+    def __init__(self,channels, tranNum=4, affine=False, track_running_stats: bool = False):
         super(F_IN, self).__init__()
         # print('channel', channels)
         self.IN = nn.InstanceNorm2d(num_features=channels,affine=affine,track_running_stats=track_running_stats)
@@ -622,7 +540,7 @@ class MaskModule(nn.Module):
         return out
 
 class GroupPooling(nn.Module):
-    def __init__(self, tranNum=8):
+    def __init__(self, tranNum=4):
         super(GroupPooling, self).__init__()
         self.tranNum = tranNum
         

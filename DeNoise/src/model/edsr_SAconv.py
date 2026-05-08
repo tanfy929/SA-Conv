@@ -1,8 +1,8 @@
 from model import common
 import torch
 import torch.nn as nn
-from model import hyper_newF_PCA_mask as fn
-from model import loftr
+from model import hyper_newB as fn
+from model import HyperNet 
 
 def make_model(args, parent=False):
     return EDSR_plus(args)
@@ -20,11 +20,7 @@ class EDSR_plus(nn.Module):
         inP = kernel_size
         tranNum = args.tranNum
 
-        self.HyperNet = loftr.HyperNet(args)
-
-        # checkpoint = torch.load('./model/model_epoch_360.pth')
-        # pretrained_dict = checkpoint['model_state_dict']
-        # self.HyperNet.load_state_dict(pretrained_dict)
+        self.HyperNet = HyperNet.HyperNetwork()
 
         self.sub_mean = common.MeanShift(args.rgb_range)
         self.add_mean = common.MeanShift(args.rgb_range, sign=1)
@@ -55,12 +51,19 @@ class EDSR_plus(nn.Module):
         self.tail = nn.Sequential(*m_tail)
 
     def forward(self, x):
-        theta0, Cx, Cy = self.HyperNet(x)
-
+        w = self.HyperNet(x)
+        
+        # ================= 新增：暂存当前 batch 的 w =================
+        # 使用 detach() 脱离计算图，避免由于记录 log 导致显存溢出
+        self.debug_w = w.detach().cpu() 
+        # =========================================================
+        
+        theta0 = w[:,0]
+        Cx = w[:,1]
+        Cy = w[:,2]
+        
         x = self.sub_mean(x)
-        # x = self.head(x, Cx, Cy, theta0)
-        # res = self.body(x, Cx, Cy, theta0)
-        # res += x
+        
         x = self.head_conv(x, Cx, Cy, theta0)
         res = x
         for module in self.body_modules:

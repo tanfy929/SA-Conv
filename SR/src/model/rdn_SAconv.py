@@ -2,10 +2,10 @@
 # https://arxiv.org/abs/1802.08797
 
 # from model import common
-from model import hyper_newB_Conv_mask2 as fn
+from model import hyper_newB_mask as fn
 import torch
 import torch.nn as nn
-from model import loftr
+from model import HyperNet 
 
 def make_model(args, parent=False):
     return RDN_plus(args)
@@ -65,7 +65,7 @@ class RDN_plus(nn.Module):
         Smooth = False
         iniScale = args.ini_scale
 
-        self.HyperNet = loftr.HyperNet(args)
+        self.HyperNet = HyperNet.HyperNetwork()
         
         # number of RDB blocks, conv layers, out channels
         self.D, C, G = {
@@ -130,7 +130,16 @@ class RDN_plus(nn.Module):
         #     raise ValueError("scale must be 2 or 3 or 4.")
 
     def forward(self, x):
-        theta0, Cx, Cy = self.HyperNet(x)
+        w = self.HyperNet(x)
+        
+        # ================= 新增：暂存当前 batch 的 w =================
+        # 使用 detach() 脱离计算图，避免由于记录 log 导致显存溢出
+        self.debug_w = w.detach().cpu() 
+        # =========================================================
+        
+        theta0 = w[:,0]
+        Cx = w[:,1]
+        Cy = w[:,2]
 
         f__1 = self.SFENet1(x, Cx, Cy, theta0)
         x  = self.SFENet2(f__1, Cx, Cy, theta0)

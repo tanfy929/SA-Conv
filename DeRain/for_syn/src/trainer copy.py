@@ -70,17 +70,10 @@ class Trainer():
             loss_R = 0.9 * self.loss(ListR[-1], lr-hr)
             loss_B0 = 0.1* self.loss(B0, hr)
             loss = loss_B0 + loss_Bs  + loss_Rs + loss_B + loss_R
-            # loss_Bs_all = loss_Bs_all + loss_Bs
-            # loss_B_all = loss_B_all + loss_B
-            # loss_Rs_all = loss_Rs_all + loss_Rs
-            # loss_R_all = loss_R_all + loss_R
-            
-            # ---------------------防止爆显存---------------------
-            loss_Bs_all = loss_Bs_all + loss_Bs.item()
-            loss_B_all = loss_B_all + loss_B.item()
-            loss_Rs_all = loss_Rs_all + loss_Rs.item()
-            loss_R_all = loss_R_all + loss_R.item()
-            
+            loss_Bs_all = loss_Bs_all + loss_Bs
+            loss_B_all = loss_B_all + loss_B
+            loss_Rs_all = loss_Rs_all + loss_Rs
+            loss_R_all = loss_R_all + loss_R
             if loss.item() < self.args.skip_threshold * self.error_last:
                 loss.backward()
                 ttt = 0
@@ -89,49 +82,15 @@ class Trainer():
                 print('Skip this batch {}! (Loss: {})'.format(
                     batch + 1, loss.item()
                 ))
-                # 显式删除图引用并清空缓存
-                del loss, loss_Bs, loss_B, loss_Rs, loss_R, B0, ListB, ListR
-                torch.cuda.empty_cache()
             timer_model.hold()
-            # if (batch + 1) % self.args.print_every == 0:
-            #     self.ckp.write_log('[{}/{}]\t{}\t{:.1f}+{:.1f}s'.format(
-            #         (batch + 1) * self.args.batch_size,
-            #         len(self.loader_train.dataset),
-            #         self.loss.display_loss(batch),
-            #         timer_model.release(),
-            #         timer_data.release()))
-            # timer_data.tic()
             if (batch + 1) % self.args.print_every == 0:
-                # 1. 像剥洋葱一样获取最底层的 Mainnet 实例
-                actual_model = self.model
-                if hasattr(actual_model, 'get_model'):
-                    actual_model = actual_model.get_model()
-                elif hasattr(actual_model, 'model'):
-                    actual_model = actual_model.model
-                if hasattr(actual_model, 'module'):
-                    actual_model = actual_model.module
-                
-                # 2. 指定获取最后微调阶段 (fxnet) 内部暂存的超网络参数
-                # 注意：如果网络由于某种原因在某些步骤没有跑 fxnet，也可以换成 actual_model.xnet.debug_w
-                w_raw = actual_model.fxnet.debug_w
-                
-                batch_w_mean = w_raw.mean(dim=0)
-                batch_w_std  = w_raw.std(dim=0) # 加上 std 观察每张图的波动，看是否学会了自适应
-                
-                th0_mean, cx_mean, cy_mean = batch_w_mean[0].item(), batch_w_mean[1].item(), batch_w_mean[2].item()
-                th0_std, cx_std, cy_std    = batch_w_std[0].item(), batch_w_std[1].item(), batch_w_std[2].item()
-
-                # 3. 拼接到日志中
-                self.ckp.write_log('[{}/{}]\t{}\t{:.1f}+{:.1f}s | th0: {:.4f}±{:.4f}, Cx: {:.4f}±{:.4f}, Cy: {:.4f}±{:.4f}'.format(
+                self.ckp.write_log('[{}/{}]\t{}\t{:.1f}+{:.1f}s'.format(
                     (batch + 1) * self.args.batch_size,
                     len(self.loader_train.dataset),
                     self.loss.display_loss(batch),
                     timer_model.release(),
-                    timer_data.release(),
-                    th0_mean, th0_std, cx_mean, cx_std, cy_mean, cy_std))
-
+                    timer_data.release()))
             timer_data.tic()
-            
         print(loss_Bs_all/cnt)
         print(loss_B_all / cnt)
         print(loss_Rs_all / cnt)

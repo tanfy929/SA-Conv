@@ -368,9 +368,10 @@ class GetBasis(nn.Module):
         # self.register_buffer()会将张量与模型状态一起保存并在模型移动到GPU时，这些缓冲区会自动移动到相同的设备
         self.register_buffer("inX", inX.reshape(1, sizeP,sizeP,1,1,1))  
         self.register_buffer("inY", inY.reshape(1, sizeP,sizeP,1,1,1)) 
-        # self.Cx = nn.Parameter(torch.ones(1))
-        # self.Cy = nn.Parameter(torch.ones(1))
-        # self.theta0 = nn.Parameter(torch.zeros(1))
+        self.Cx = nn.Parameter(torch.ones(1))
+        self.Cy = nn.Parameter(torch.ones(1))
+        self.theta0 = nn.Parameter(torch.zeros(1))
+       
         # v = torch.pi/inP*(inP-1)
         # self.p = inP/2
         # self.device = 'cuda:4' if torch.cuda.is_available() else 'cpu'
@@ -384,13 +385,21 @@ class GetBasis(nn.Module):
         # self.theta = theta.reshape(1,1,tranNum,1,1).to(self.device)
         self.register_buffer("theta", theta.reshape(1, 1, 1, tranNum, 1, 1))
 
+        ini_Cx = torch.ones(1)
+        ini_Cy = torch.ones(1)
+        ini_theta0 = torch.zeros(1)
+        self.register_buffer("ini_Cx", ini_Cx)
+        self.register_buffer("ini_Cy", ini_Cy)
+        self.register_buffer("ini_theta0",ini_theta0)
+        
+        self.scale = 1
     def forward(self, Cx, Cy, theta0):
         B = Cx.size(0)
 
-        Cx = Cx.view(B, 1, 1, 1, 1, 1)
-        Cy = Cy.view(B, 1, 1, 1, 1, 1)
-        theta0 = theta0.view(B, 1, 1, 1, 1, 1)
-
+        Cx = self.scale * Cx.view(B, 1, 1, 1, 1, 1) + self.Cx
+        Cy = self.scale * Cy.view(B, 1, 1, 1, 1, 1) + self.Cy
+        theta0 = self.scale * theta0.view(B, 1, 1, 1, 1, 1) + self.theta0
+        
         X = torch.cos(theta0)*self.inX-torch.sin(theta0)*self.inY
         Y = torch.cos(theta0)*self.inY+torch.sin(theta0)*self.inX
         

@@ -7,9 +7,9 @@ Created on Mon Mar  8 20:31:43 2021
 ## ECCV-2018-Image Super-Resolution Using Very Deep Residual Channel Attention Networks
 ## https://arxiv.org/abs/1807.02758
 from model import common
-from model import hyper_newF_PCA_mask2 as fn
+from model import hyper_newF_mask as fn
 import torch.nn as nn
-from model import loftr
+from model import HyperNet 
 
 def make_model(args, parent=False):
     return RCAN_plus(args)
@@ -105,10 +105,19 @@ class RCAN_plus(nn.Module):
         self.body = nn.ModuleList(modules_body)
         self.tail = nn.Sequential(*modules_tail) 
 
-        self.HyperNet = loftr.HyperNet(args)
+        self.HyperNet = HyperNet.HyperNetwork()
 
     def forward(self, x):
-        theta0, Cx, Cy = self.HyperNet(x)
+        w = self.HyperNet(x)
+        
+        # ================= 新增：暂存当前 batch 的 w =================
+        # 使用 detach() 脱离计算图，避免由于记录 log 导致显存溢出
+        self.debug_w = w.detach().cpu() 
+        # =========================================================
+        
+        theta0 = w[:,0]
+        Cx = w[:,1]
+        Cy = w[:,2]
 
         x = self.sub_mean(x)
         x = self.head(x, Cx, Cy, theta0)

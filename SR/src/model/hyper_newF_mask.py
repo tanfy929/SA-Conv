@@ -126,7 +126,7 @@ class Fconv_PCA_out(nn.Module):
         outNum = self.outNum
         inNum = self.inNum
         Basis = self.GetBasis(Cx, Cy, theta0)
-        tempW = torch.einsum('bijok,mnak->bmonaij', Basis, self.weights)
+        tempW = torch.einsum('bijok,mnak->bmanoij', Basis, self.weights)
         _filter = tempW.reshape([B, outNum, inNum*tranNum , self.sizeP, self.sizeP ])
         _bias = self.c
 
@@ -293,7 +293,7 @@ class Fconv_1X1(nn.Module):
         else:
             self.c = torch.zeros(1,outNum,1,1)
 
-    def forward(self, input):
+    def forward(self, input, Cx=None, Cy=None, theta0=None):
         tranNum = self.tranNum
         outNum = self.outNum
         inNum = self.inNum
@@ -371,7 +371,11 @@ class GetBasis(nn.Module):
 
         self.register_buffer("inX", inX.reshape(1, sizeP,sizeP,1,1,1))  
         self.register_buffer("inY", inY.reshape(1, sizeP,sizeP,1,1,1)) 
-       
+
+        self.Cx = nn.Parameter(torch.ones(1))
+        self.Cy = nn.Parameter(torch.ones(1))
+        self.theta0 = nn.Parameter(torch.zeros(1))
+        
         v = torch.pi/inP*(inP-1)
         U = Matrix_PCA(sizeP, tranNum, inP=None, Smooth = True)
         self.register_buffer("U", U) 
@@ -384,12 +388,13 @@ class GetBasis(nn.Module):
         theta = torch.arange(tranNum)/tranNum*2*torch.pi
         self.register_buffer("theta", theta.reshape(1, 1, 1, tranNum, 1, 1))
 
+        self.scale = 1
     def forward(self, Cx, Cy, theta0):
         B = Cx.size(0)
 
-        Cx = Cx.view(B, 1, 1, 1, 1, 1)
-        Cy = Cy.view(B, 1, 1, 1, 1, 1)
-        theta0 = theta0.view(B, 1, 1, 1, 1, 1)
+        Cx = self.scale * Cx.view(B, 1, 1, 1, 1, 1) + self.Cx
+        Cy = self.scale * Cy.view(B, 1, 1, 1, 1, 1) + self.Cy
+        theta0 = self.scale * theta0.view(B, 1, 1, 1, 1, 1) + self.theta0
 
         X = torch.cos(theta0)*self.inX-torch.sin(theta0)*self.inY
         Y = torch.cos(theta0)*self.inY+torch.sin(theta0)*self.inX
